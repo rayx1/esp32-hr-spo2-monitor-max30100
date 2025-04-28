@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Heart & SpO₂ Monitor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Arial', sans-serif;
+      background: #0e0e0e;
+      color: #f0f0f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    h1 {
+      margin-top: 20px;
+      font-size: 2rem;
+    }
+    #stats {
+      display: flex;
+      justify-content: center;
+      margin-top: 20px;
+      gap: 40px;
+    }
+    .card {
+      background: #1e1e1e;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 0 15px #111;
+      text-align: center;
+      min-width: 120px;
+    }
+    .card span {
+      font-size: 1.5rem;
+      font-weight: bold;
+      display: block;
+      margin-top: 10px;
+    }
+    #chartContainer {
+      width: 90%;
+      max-width: 600px;
+      margin-top: 40px;
+    }
+    canvas {
+      background: #000;
+      border-radius: 12px;
+    }
+    footer {
+      margin-top: auto;
+      padding: 10px;
+      font-size: 0.8rem;
+      color: #666;
+    }
+    button {
+      background: #ff0055;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      color: white;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    button:hover {
+      background: #ff3366;
+    }
+  </style>
+</head>
+<body>
+  <h1>❤️ Heart & SpO₂ Monitor</h1>
+
+  <div id="stats">
+    <div class="card">
+      HR
+      <span id="hr">--</span> bpm
+    </div>
+    <div class="card">
+      SpO₂
+      <span id="spo2">--</span> %
+    </div>
+  </div>
+
+  <div id="chartContainer">
+    <canvas id="hrChart"></canvas>
+  </div>
+
+  <button onclick="downloadCSV()">Download CSV</button>
+
+  <footer>ESP32 PulseOximeter - Offline Hotspot Mode</footer>
+
+  <script src="/chart.js"></script>
+  <script>
+    const hrSpan = document.getElementById('hr');
+    const spo2Span = document.getElementById('spo2');
+    const hrChartCtx = document.getElementById('hrChart').getContext('2d');
+
+    let csvData = "Time,Heart Rate,SpO2\n";
+
+    const socket = new WebSocket("ws://" + location.hostname + ":81");
+
+    socket.onmessage = function(event) {
+      const data = JSON.parse(event.data);
+      const now = new Date().toLocaleTimeString();
+
+      if (data.heartRate) {
+        hrSpan.textContent = data.heartRate.toFixed(1);
+        hrChart.data.labels.push(now);
+        hrChart.data.datasets[0].data.push(data.heartRate);
+      } else {
+        hrSpan.textContent = '--';
+      }
+
+      if (data.spo2) {
+        spo2Span.textContent = data.spo2.toFixed(1);
+      } else {
+        spo2Span.textContent = '--';
+      }
+
+      csvData += `${now},${data.heartRate || ''},${data.spo2 || ''}\n`;
+
+      if (hrChart.data.labels.length > 40) {
+        hrChart.data.labels.shift();
+        hrChart.data.datasets[0].data.shift();
+      }
+      hrChart.update();
+    };
+
+    const hrChart = new Chart(hrChartCtx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Heart Beat',
+          borderColor: '#00FF00',
+          backgroundColor: 'transparent',
+          borderWidth: 3,
+          data: [],
+          tension: 0, // Straight lines, sharp like ECG
+          fill: false,
+          pointRadius: 0 // No visible points
+        }]
+      },
+      options: {
+        responsive: true,
+        animation: {
+          duration: 0  // Instant update, no smooth animation
+        },
+        scales: {
+          x: {
+            display: false // Hide X-axis to look clean
+          },
+          y: {
+            min: 40,
+            max: 180,
+            grid: {
+              color: '#222'
+            },
+            ticks: {
+              color: '#0f0'
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            display: false
+          }
+        }
+      }
+    });
+
+    function downloadCSV() {
+      const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'heart_spo2_log.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
